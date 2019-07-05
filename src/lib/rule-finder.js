@@ -1,6 +1,7 @@
 const path = require('path');
 
 const eslint = require('eslint');
+const glob = require('glob');
 const isAbsolute = require('path-is-absolute');
 const difference = require('./array-diff');
 const getSortedRules = require('./sort-rules');
@@ -16,14 +17,24 @@ function _getConfigFile(specifiedFile) {
   return require(path.join(process.cwd(), 'package.json')).main; // eslint-disable-line import/no-dynamic-require
 }
 
-function _getConfig(configFile) {
+function _getConfigs(configFile, files) {
   const cliEngine = new eslint.CLIEngine({
     // Ignore any config applicable depending on the location on the filesystem
     useEslintrc: false,
     // Point to the particular config
     configFile
   });
-  return cliEngine.getConfigForFile();
+  return new Set(files.map(function (filePath) {
+    if (!cliEngine.isPathIgnored(filePath)) {
+      return cliEngine.getConfigForFile(filePath);
+    }
+  }).filter(Boolean));
+}
+
+function _getConfig(configFile, files) {
+  return Array.from(_getConfigs(configFile, files)).reduce((prev, item) => {
+    return Object.assign(prev, item, { rules: Object.assign({}, prev.rules, item.rules) });
+  }, {});
 }
 
 function _getCurrentNamesRules(config) {
@@ -98,7 +109,8 @@ function _isNotCore(rule) {
 function RuleFinder(specifiedFile, options) {
   const {omitCore, includeDeprecated} = options;
   const configFile = _getConfigFile(specifiedFile);
-  const config = _getConfig(configFile);
+  const files = glob.sync('**/*.js', { dot: true, matchBase: true });
+  const config = _getConfig(configFile, files);
   let currentRuleNames = _getCurrentNamesRules(config);
   if (omitCore) {
     currentRuleNames = currentRuleNames.filter(_isNotCore);
