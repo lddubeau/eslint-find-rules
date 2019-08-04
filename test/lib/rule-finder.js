@@ -2,6 +2,21 @@ const path = require('path');
 const assert = require('assert');
 const proxyquire = require('proxyquire');
 
+let ModuleResolver;
+try {
+  // eslint 6 and over: load the actual module
+  // eslint-disable-next-line import/no-unresolved
+  ModuleResolver = require('eslint/lib/shared/relative-module-resolver');
+} catch (err) {
+  if (err.code !== 'MODULE_NOT_FOUND') {
+    throw err;
+  }
+  // eslint < 6: ModuleResolver is `undefined`, which is okay. The proxyquire
+  // override for ../shared/relative-module-resolver won't be used because
+  // eslint < 6 does not have that module and so does not try to load it.
+  ModuleResolver = undefined;
+}
+
 const processCwd = process.cwd;
 
 const eslintVersion = process.env.ESLINT === '3' || process.env.ESLINT === '4' ? '<v5' : 'v5+';
@@ -18,6 +33,31 @@ const getRuleFinder = proxyquire('../../src/lib/rule-finder', {
           .set('baz-rule', {});
       }
     }
+  },
+  //
+  // This following module override is needed for eslint v6 and over. The module
+  // path that we pass here is literally the one used in eslint (specifially in
+  // eslint/lib/cli-engine/config-array-factory.js)
+  //
+  // The stock `resolve` method attempts to resolve to a file path the module
+  // name passed in `name` relative to the path in `relative`. We have to
+  // override that function, otherwise eslint fails to "load" our plugins.
+  //
+  '../shared/relative-module-resolver': {
+    resolve(name, relative) {
+      // The strategy is simple: if called with one of our plugins, just return
+      // the module name, as-is. This is a lie because what we return is not a
+      // path, but it is simple, and works. Otherwise, we just call the original
+      // `resolve` from the stock module.
+      return ['eslint-plugin-plugin',
+        'eslint-plugin-no-rules',
+        '@scope/eslint-plugin-scoped-plugin',
+        '@scope/eslint-plugin'].includes(name) ?
+        name :
+        ModuleResolver.resolve(name, relative);
+    },
+    '@global': true,
+    '@noCallThru': true
   },
   'eslint-plugin-plugin': {
     rules: {
@@ -82,6 +122,17 @@ const getRuleFinderForDedupeTests = proxyquire('../../src/lib/rule-finder', {
           .set('plugin/duplicate-bar-rule', {});
       }
     }
+  },
+  // See the long comment in `getRuleFinder` above to learn what the point of
+  // this override is.
+  '../shared/relative-module-resolver': {
+    resolve(name, relative) {
+      return name === 'eslint-plugin-plugin' ?
+        name :
+        ModuleResolver.resolve(name, relative);
+    },
+    '@global': true,
+    '@noCallThru': true
   },
   'eslint-plugin-plugin': {
     rules: {
