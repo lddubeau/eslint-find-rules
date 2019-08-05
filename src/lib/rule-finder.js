@@ -24,16 +24,14 @@ function _getConfigs(configFile, files) {
     // Point to the particular config
     configFile
   });
-  return new Set(files.map(function (filePath) {
-    if (!cliEngine.isPathIgnored(filePath)) {
-      return cliEngine.getConfigForFile(filePath);
-    }
-  }).filter(Boolean));
+  return new Set(files
+                 .map(filePath => cliEngine.isPathIgnored(filePath) ? false : cliEngine.getConfigForFile(filePath))
+                 .filter(Boolean));
 }
 
 function _getConfig(configFile, files) {
   return Array.from(_getConfigs(configFile, files)).reduce((prev, item) => {
-    return Object.assign(prev, item, { rules: Object.assign({}, prev.rules, item.rules) });
+    return Object.assign(prev, item, {rules: Object.assign({}, prev.rules, item.rules)});
   }, {});
 }
 
@@ -109,7 +107,7 @@ function _isNotCore(rule) {
 function RuleFinder(specifiedFile, options) {
   const {omitCore, includeDeprecated} = options;
   const configFile = _getConfigFile(specifiedFile);
-  const files = glob.sync('**/*.js', { dot: true, matchBase: true });
+  const files = glob.sync('**/*.js', {dot: true, matchBase: true});
   const config = _getConfig(configFile, files);
   let currentRuleNames = _getCurrentNamesRules(config);
   if (omitCore) {
